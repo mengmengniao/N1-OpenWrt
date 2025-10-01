@@ -1,45 +1,52 @@
 #!/bin/bash
 
 # === Part 1: Clone all source repositories ===
-# Clone LuCI apps and repositories containing their dependencies
+# We only need to clone the main 'all-in-one' repositories
 git clone https://github.com/ophub/luci-app-amlogic --depth=1 clone/amlogic
 git clone https://github.com/xiaorouji/openwrt-passwall --depth=1 clone/passwall
 git clone https://github.com/fw876/helloworld.git --depth=1 clone/helloworld
 git clone https://github.com/chenmoha/luci-app-turboacc.git --depth=1 clone/turboacc
 git clone https://github.com/sbwml/luci-app-mosdns.git --depth=1 clone/mosdns
-git clone https://github.com/sbwml/v2dat.git --depth=1 clone/v2dat # Dependency for mosdns
 
-# === Part 2: Organize packages for the build system ===
-# First, clean any old versions that might conflict
+# === Part 2: Organize packages (The Thorough Fix) ===
+# Clean any old versions that might conflict
 rm -rf feeds/luci/applications/luci-app-passwall
 
 # Copy the LuCI applications to the correct feed directory
 cp -rf clone/amlogic/luci-app-amlogic feeds/luci/applications/
 cp -rf clone/passwall/luci-app-passwall feeds/luci/applications/
-cp -rf clone/helloworld/luci-app-ssr-plus feeds/luci/applications/
 cp -rf clone/turboacc/luci-app-turboacc feeds/luci/applications/
+# Copy LuCI apps from the 'all-in-one' repos
+cp -rf clone/helloworld/luci-app-ssr-plus feeds/luci/applications/
 cp -rf clone/mosdns/luci-app-mosdns feeds/luci/applications/
 
-# Copy the dependency packages into the main 'package' directory
-# The build system will find them here.
+# --- THIS IS THE ULTIMATE FIX ---
+# Instead of cherry-picking, copy ALL packages from the complex repositories.
+# This ensures all dependencies like v2ray-plugin, dns2socks-rust, v2dat, etc., are included.
 
-# Dependencies from helloworld repo (for ssr-plus) that fix the warnings
-cp -rf clone/helloworld/shadowsocksr-libev package/
-cp -rf clone/helloworld/shadowsocks-libev package/
-cp -rf clone/helloworld/dns2socks package/
-cp -rf clone/helloworld/chinadns-ng package/
-# Copy all required protocols for full functionality
-cp -rf clone/helloworld/hysteria package/
-cp -rf clone/helloworld/tuic-client package/
-cp -rf clone/helloworld/trojan package/
-cp -rf clone/helloworld/v2ray-core package/
-cp -rf clone/helloworld/v2ray-plugin package/
-cp -rf clone/helloworld/xray-core package/
-cp -rf clone/helloworld/xray-plugin package/
+# Copy all packages from helloworld repository
+# Use a loop to ensure we only copy directories (which are packages)
+for dir in clone/helloworld/*; do
+  if [ -d "$dir" ]; then
+    package_name=$(basename "$dir")
+    # We already copied luci-app-ssr-plus, so skip it here
+    if [ "$package_name" != "luci-app-ssr-plus" ]; then
+      cp -rf "$dir" package/
+    fi
+  fi
+done
 
-
-# Dependency from v2dat repo (for mosdns)
-cp -rf clone/v2dat/v2dat package/
+# Copy all packages from luci-app-mosdns repository (it includes mosdns, v2dat, etc.)
+for dir in clone/mosdns/*; do
+  if [ -d "$dir" ]; then
+    package_name=$(basename "$dir")
+    # We already copied luci-app-mosdns, so skip it here
+    if [ "$package_name" != "luci-app-mosdns" ]; then
+      cp -rf "$dir" package/
+    fi
+  fi
+done
+# --- END OF FIX ---
 
 # === Part 3: Clean up ===
 rm -rf clone
