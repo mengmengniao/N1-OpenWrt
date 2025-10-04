@@ -1,13 +1,12 @@
 #!/bin/bash
 
 # === Part 0: The Go Build Fix (harmless to keep) ===
-# This addresses a common build error with Go packages. Keeping it is good practice.
 sed -i 's/GO_PKG_TARGET_VARS:=/GO_PKG_TARGET_VARS:=\nexport GOFLAGS:=-buildvcs=false/' feeds/packages/lang/golang/golang.mk
 
 # === Part 1: Clone all source repositories ===
 git clone https://github.com/ophub/luci-app-amlogic --depth=1 clone/amlogic
 git clone https://github.com/xiaorouji/openwrt-passwall --depth=1 clone/passwall
-git clone https://github.com/fw876/helloworld.git --depth=1 clone/helloworld
+git clone https://github.com/fw86/helloworld.git --depth=1 clone/helloworld
 git clone https://github.com/chenmoha/luci-app-turboacc.git --depth=1 clone/turboacc
 git clone https://github.com/sbwml/luci-app-mosdns.git --depth=1 clone/mosdns
 
@@ -19,7 +18,6 @@ cp -rf clone/turboacc/luci-app-turboacc feeds/luci/applications/
 cp -rf clone/helloworld/luci-app-ssr-plus feeds/luci/applications/
 cp -rf clone/mosdns/luci-app-mosdns feeds/luci/applications/
 
-# Copy ALL packages from the complex repositories to ensure all dependencies are met.
 for dir in clone/helloworld/*; do
   if [ -d "$dir" ]; then
     package_name=$(basename "$dir")
