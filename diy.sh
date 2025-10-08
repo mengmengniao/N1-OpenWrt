@@ -1,31 +1,27 @@
 #!/bin/bash
 
-echo "INFO: Preparing basic Go build environment..."
-rm -rf feeds/packages/lang/golang
-git clone https://github.com/sbwml/packages_lang_golang -b 24.x --single-branch --depth=1 feeds/packages/lang/golang
+# Adjust source code
+patch -p1 -f < $(dirname "$0")/automount.patch
+patch -p1 -f < $(dirname "$0")/luci.patch
 
-echo "INFO: Installing Passwall and its curated packages..."
-# 1. 删除 feeds 中的旧版本和潜在冲突项
-rm -rf feeds/packages/net/{xray-core,v2ray-geodata,sing-box,chinadns-ng,hysteria,v2ray-plugin,xray-plugin}
-rm -rf feeds/luci/applications/luci-app-passwall
-
-# 2. 克隆后端软件包和 LuCI 界面到 package 目录
-git clone https://github.com/xiaorouji/openwrt-passwall-packages package/passwall-packages
-git clone https://github.com/xiaorouji/openwrt-passwall package/passwall-luci
-
-echo "INFO: Adding other LuCI applications..."
-
+# Clone packages
+git clone https://github.com/nantayo/My-Pkg clone/my-pkg
+git clone https://github.com/ophub/luci-app-amlogic --depth=1 clone/amlogic
+git clone https://github.com/sbwml/luci-app-mosdns -b v5 --single-branch --depth=1 clone/mosdns
+git clone https://github.com/sbwml/packages_lang_golang -b 24.x --single-branch --depth=1 clone/golang
+git clone https://github.com/sbwml/v2ray-geodata --depth=1 clone/v2ray-geodata
+git clone https://github.com/xiaorouji/openwrt-passwall --depth=1 clone/passwall
 # 克隆 helloworld 仓库luci-app-ssr-plus
 git clone https://github.com/fw876/helloworld --depth=1 package/helloworld-temp
+
+# Adjust packages
+rm -rf feeds/luci/applications/luci-app-passwall feeds/packages/lang/golang feeds/packages/net/mosdns feeds/packages/net/v2ray-geodata
+cp -rf clone/amlogic/luci-app-amlogic clone/mosdns/luci-app-mosdns clone/passwall/luci-app-passwall feeds/luci/applications/
+cp -rf clone/golang feeds/packages/lang/
+cp -rf clone/mosdns/mosdns clone/mosdns/v2dat clone/my-pkg/haproxy clone/v2ray-geodata feeds/packages/net/
+cp -rf clone/my-pkg/luci-app-mosdns clone/my-pkg/luci-app-passwall feeds/luci/applications/
 cp -rf package/helloworld-temp/luci-app-ssr-plus feeds/luci/applications/
+sed -i '/docker-compose/d' feeds/luci/applications/luci-app-dockerman/Makefile
 
-# 添加其他插件
-git clone https://github.com/ophub/luci-app-amlogic --depth=1 package/luci-app-amlogic
-git clone https://github.com/chenmoha/luci-app-turboacc.git --depth=1 package/luci-app-turboacc
-git clone https://github.com/sbwml/luci-app-mosdns -b v5 --single-branch --depth=1 package/mosdns
-
-
-echo "INFO: Cleaning up temporary files..."
-rm -rf package/helloworld-temp
-
-echo "SUCCESS: Your custom configuration is complete!"
+# Clean packages
+rm -rf clone
