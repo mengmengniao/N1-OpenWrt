@@ -8,7 +8,7 @@ patch -p1 -f < $(dirname "$0")/luci.patch
 git clone https://github.com/nantayo/My-Pkg clone/my-pkg
 git clone https://github.com/ophub/luci-app-amlogic --depth=1 clone/amlogic
 git clone https://github.com/sbwml/luci-app-mosdns -b v5 --single-branch --depth=1 clone/mosdns
-git clone https://github.com/sbwml/packages_lang_golang -b 24.x --single-branch --depth=1 clone/golang
+git clone https://github.com/sbwml/packages_lang_golang -b 22.x --single-branch --depth=1 clone/golang
 git clone https://github.com/sbwml/v2ray-geodata --depth=1 clone/v2ray-geodata
 git clone https://github.com/xiaorouji/openwrt-passwall --depth=1 clone/passwall
 # 克隆 helloworld 仓库luci-app-ssr-plus
