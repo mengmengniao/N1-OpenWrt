@@ -1,77 +1,65 @@
-name: Build ImmortalWrt-22.03 for N1
+name: Build Lede for N1 (Custom, Kernel 5.10)
 
 on:
   workflow_dispatch:
    inputs:
       ssh:
         description: 'SSH connection to Actions'
-        required: true
+        required: false
         default: 'false'
-        type: choice
-        options:
-          - true
-          - false
-  schedule:
-    - cron: "0 0 1,16 * *"
 
 env:
-  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  REPO_URL: https://github.com/immortalwrt/immortalwrt
-  REPO_BRANCH: openwrt-22.03
+  REPO_URL: https://github.com/coolsnowwolf/lede
+  REPO_BRANCH: master
+  DIY_SH: diy.sh
+  CONFIG_FILE: armsr/armv8/.config
   TZ: Asia/Shanghai
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
 
     steps:
     - name: Checkout
       uses: actions/checkout@main
 
-    - name: Free up space
-      uses: jlumbroso/free-disk-space@main
-      with:
-        tool-cache: true
-        android: true
-        dotnet: true
-        haskell: true
-        large-packages: true
-        docker-images: true
-        swap-storage: true
-
     - name: Initialize environment
       env:
         DEBIAN_FRONTEND: noninteractive
       run: |
-        sudo -E apt-get -qq update > /dev/null
-        sudo -E apt-get -qq install -y $(curl -fsSL https://raw.githubusercontent.com/nantayo/My-Pkg/master/2410) > /dev/null
-        sudo -E apt-get -qq autoremove --purge > /dev/null
-        sudo -E apt-get -qq clean > /dev/null
+        sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc
+        sudo -E apt-get -qq update
+        sudo -E apt-get -qq install $(curl -fsSL https://raw.githubusercontent.com/nantayo/My-Pkg/master/2203)
+        sudo -E apt-get -qq autoremove --purge
+        sudo -E apt-get -qq clean
         sudo timedatectl set-timezone "$TZ"
-        sudo mkdir -p /workdir
-        sudo chown $USER:$GROUPS /workdir
 
     - name: Clone source code
-      working-directory: /workdir
       run: |
+        sudo mkdir -p /workdir
+        sudo chown $USER:$GROUPS /workdir
+        cd /workdir
         git clone $REPO_URL -b $REPO_BRANCH --single-branch --depth=1 openwrt
         ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
-    - name: Update & Install feeds
+    - name: Cache dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          /workdir/openwrt/staging_dir
+          /workdir/openwrt/dl
+        key: ${{ runner.os }}-lede-${{ hashFiles('**/diy.sh') }}
+
+    - name: Load custom feeds and config
       run: |
-        chmod +x diy.sh
+        chmod +x $DIY_SH
         cd openwrt
-        ./scripts/feeds update -a
-        $GITHUB_WORKSPACE/diy.sh
+        $GITHUB_WORKSPACE/$DIY_SH
         ./scripts/feeds update -a
         ./scripts/feeds install -a
+        mv $GITHUB_WORKSPACE/$CONFIG_FILE ./.config
 
-    - name: Load N1 custom config
-      run: |
-        rm -rf openwrt/files openwrt/.config
-        mv armsr/armv8/files armsr/armv8/.config openwrt/
-
-    - name: SSH connect to Actions
+    - name: SSH connection to Actions
       uses: P3TERX/ssh2actions@main
       if: github.event.inputs.ssh == 'true'
 
@@ -79,17 +67,16 @@ jobs:
       working-directory: ./openwrt
       run: |
         make defconfig
-        make download -j$(( $(nproc) * 2 ))
+        make download -j$(nproc)
         find dl -size -1k -exec rm -f {} \;
 
-    - name: Compile N1 firmware
+    - name: Compile firmware
+      working-directory: ./openwrt
       run: |
-        chmod -R 755 openwrt
-        cd openwrt
         echo -e "$(nproc) thread compile"
-        make -j$(( $(nproc) + 1 )) || make -j1 V=s
+        make -j$(nproc) || make -j1 V=s
 
-    - name: Package armsr as openwrt
+    - name: Package N1 firmware
       uses: unifreq/openwrt_packit@master
       env:
         OPENWRT_ARMVIRT: openwrt/bin/targets/armsr/armv8/*rootfs.tar.gz
@@ -105,17 +92,16 @@ jobs:
     - name: Upload firmware to release
       uses: softprops/action-gh-release@master
       with:
-        tag_name: OpenWrt_${{ env.PACKAGED_OUTPUTDATE }}
+        tag_name: Lede_N1_K5.10_Custom_${{ env.PACKAGED_OUTPUTDATE }}
         files: ${{ env.PACKAGED_OUTPUTPATH }}/*.img.xz
         body: |
-          首次使用建议全新刷写
-          * 基本信息
-          IP: 192.168.11.2
-          账户: root
-          密码: password
+          Lede for N1 (Custom, Kernel 5.10)
+          * IP: 192.168.11.2 (请根据您的 `files` 目录确认)
+          * 账户: root
+          * 密码: password
 
     - name: Delete old releases
       uses: dev-drprasad/delete-older-releases@master
       with:
-        keep_latest: 2
-        delete_tags : true
+        keep_latest: 5
+        delete_tags: true
