@@ -1,3 +1,7 @@
+#
+# Final Workflow for Building Lede for N1 (Custom, Kernel 5.10)
+
+
 name: Build Lede for N1 (Custom, Kernel 5.10)
 
 on:
@@ -23,18 +27,23 @@ jobs:
     - name: Checkout
       uses: actions/checkout@main
 
-    - name: Initialize environment
+    - name: Initialize environment with correct dependencies
       env:
         DEBIAN_FRONTEND: noninteractive
       run: |
+        # Use Lean's official recommended dependencies to fix glib2/gettext build errors
         sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc
         sudo -E apt-get -qq update
-        sudo -E apt-get -qq install $(curl -fsSL https://raw.githubusercontent.com/nantayo/My-Pkg/master/2203)
+        sudo -E apt-get -qq install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
+        bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib \
+        git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev \
+        libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libreadline-dev libssl-dev libtool lrzsz \
+        mlocate file re2c rsync subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
         sudo -E apt-get -qq autoremove --purge
         sudo -E apt-get -qq clean
         sudo timedatectl set-timezone "$TZ"
 
-    - name: Clone source code
+    - name: Clone Lede source code
       run: |
         sudo mkdir -p /workdir
         sudo chown $USER:$GROUPS /workdir
@@ -42,41 +51,51 @@ jobs:
         git clone $REPO_URL -b $REPO_BRANCH --single-branch --depth=1 openwrt
         ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
-    - name: Cache dependencies
+    - name: Cache build dependencies
       uses: actions/cache@v4
       with:
         path: |
           /workdir/openwrt/staging_dir
           /workdir/openwrt/dl
-        key: ${{ runner.os }}-lede-${{ hashFiles('**/diy.sh') }}
+        key: ${{ runner.os }}-lede-master-${{ hashFiles('**/diy.sh') }}
+        restore-keys: |
+          ${{ runner.os }}-lede-master-
 
     - name: Load custom feeds and config
       run: |
         chmod +x $DIY_SH
         cd openwrt
+        # Run our custom diy.sh to clone all third-party packages
         $GITHUB_WORKSPACE/$DIY_SH
+        
+        # Update and install all feeds
         ./scripts/feeds update -a
         ./scripts/feeds install -a
+        
+        # Copy our custom minimal .config file
         mv $GITHUB_WORKSPACE/$CONFIG_FILE ./.config
 
     - name: SSH connection to Actions
       uses: P3TERX/ssh2actions@main
       if: github.event.inputs.ssh == 'true'
 
-    - name: Download package
+    - name: Download all package sources
       working-directory: ./openwrt
       run: |
         make defconfig
         make download -j$(nproc)
         find dl -size -1k -exec rm -f {} \;
 
-    - name: Compile firmware
+    - name: Compile the firmware
+      id: compile
       working-directory: ./openwrt
       run: |
         echo -e "$(nproc) thread compile"
         make -j$(nproc) || make -j1 V=s
+        echo "status=success" >> ${GITHUB_OUTPUT}
 
-    - name: Package N1 firmware
+    - name: Package N1 firmware using openwrt_packit
+      if: steps.compile.outputs.status == 'success'
       uses: unifreq/openwrt_packit@master
       env:
         OPENWRT_ARMVIRT: openwrt/bin/targets/armsr/armv8/*rootfs.tar.gz
@@ -90,17 +109,19 @@ jobs:
         SFE_FLOW: 0
 
     - name: Upload firmware to release
+      if: steps.compile.outputs.status == 'success'
       uses: softprops/action-gh-release@master
       with:
         tag_name: Lede_N1_K5.10_Custom_${{ env.PACKAGED_OUTPUTDATE }}
         files: ${{ env.PACKAGED_OUTPUTPATH }}/*.img.xz
         body: |
-          Lede for N1 (Custom, Kernel 5.10)
+          基于 Lean's LEDE (master) + Kernel 5.10 定制编译
+          * 核心功能: Passwall, SSR-Plus, Argon, Docker, MosDNS, 晶晨宝盒
           * IP: 192.168.11.2 (请根据您的 `files` 目录确认)
           * 账户: root
           * 密码: password
 
-    - name: Delete old releases
+    - name: Delete old workflow runs and releases
       uses: dev-drprasad/delete-older-releases@master
       with:
         keep_latest: 5
