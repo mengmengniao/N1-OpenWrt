@@ -1,6 +1,7 @@
 #
-# Final Workflow for Building Lede for N1 (Custom, Kernel 5.10)
-
+# The Graduated Workflow for Building a Highly Customized Lede Firmware for N1
+# This is the final version, incorporating core source code patches for maximum stability and features.
+#
 
 name: Build Lede for N1 (Custom, Kernel 5.10)
 
@@ -27,21 +28,13 @@ jobs:
     - name: Checkout
       uses: actions/checkout@main
 
-    - name: Initialize environment with correct dependencies
+    - name: Initialize Ultimate Developer Environment
       env:
         DEBIAN_FRONTEND: noninteractive
       run: |
-        # Use Lean's official recommended dependencies to fix glib2/gettext build errors
         sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc
         sudo -E apt-get -qq update
-        sudo -E apt-get -qq install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
-        bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib \
-        git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev \
-        libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libreadline-dev libssl-dev libtool lrzsz \
-        mlocate file re2c rsync subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
-        sudo -E apt-get -qq autoremove --purge
-        sudo -E apt-get -qq clean
-        sudo timedatectl set-timezone "$TZ"
+        sudo -E apt-get -qq install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libreadline-dev libssl-dev libtool lrzsz mlocate file re2c rsync subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev libffi-dev libbz2-dev libreadline-dev libsqlite3-dev pkg-config
 
     - name: Clone Lede source code
       run: |
@@ -51,28 +44,35 @@ jobs:
         git clone $REPO_URL -b $REPO_BRANCH --single-branch --depth=1 openwrt
         ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
+    # =================================================================
+    # <<< NEW STEP: Apply core patches to Lede source >>>
+    # =================================================================
+    - name: Apply core patches
+      run: |
+        cd openwrt
+        # Apply patches from your repository's 'patches' directory
+        patch -p1 < $GITHUB_WORKSPACE/patches/0001-musl-elf.h-add-typedefs-for-Elf_Relr.patch
+        patch -p1 < $GITHUB_WORKSPACE/patches/0002-kernel-add-XDP-sockets-support.patch
+        patch -p1 < $GITHUB_WORKSPACE/patches/0003-scripts-optimize-download-mirrors.patch
+        patch -p1 < $GITHUB_WORKSPACE/patches/0004-toolchain-add-libquadmath-support.patch
+        
     - name: Cache build dependencies
       uses: actions/cache@v4
       with:
         path: |
           /workdir/openwrt/staging_dir
           /workdir/openwrt/dl
-        key: ${{ runner.os }}-lede-master-${{ hashFiles('**/diy.sh') }}
+        key: ${{ runner.os }}-lede-master-v3-${{ hashFiles('**/diy.sh', '**/patches/*') }} # Updated key to include patches
         restore-keys: |
-          ${{ runner.os }}-lede-master-
+          ${{ runner.os }}-lede-master-v3-
 
     - name: Load custom feeds and config
       run: |
         chmod +x $DIY_SH
         cd openwrt
-        # Run our custom diy.sh to clone all third-party packages
         $GITHUB_WORKSPACE/$DIY_SH
-        
-        # Update and install all feeds
         ./scripts/feeds update -a
         ./scripts/feeds install -a
-        
-        # Copy our custom minimal .config file
         mv $GITHUB_WORKSPACE/$CONFIG_FILE ./.config
 
     - name: SSH connection to Actions
@@ -84,7 +84,6 @@ jobs:
       run: |
         make defconfig
         make download -j$(nproc)
-        find dl -size -1k -exec rm -f {} \;
 
     - name: Compile the firmware
       id: compile
@@ -115,7 +114,7 @@ jobs:
         tag_name: Lede_N1_K5.10_Custom_${{ env.PACKAGED_OUTPUTDATE }}
         files: ${{ env.PACKAGED_OUTPUTPATH }}/*.img.xz
         body: |
-          基于 Lean's LEDE (master) + Kernel 5.10 定制编译
+          基于 Lean's LEDE (master) + Kernel 5.10 定制编译 (含核心补丁)
           * 核心功能: Passwall, SSR-Plus, Argon, Docker, MosDNS, 晶晨宝盒
           * IP: 192.168.11.2 (请根据您的 `files` 目录确认)
           * 账户: root
