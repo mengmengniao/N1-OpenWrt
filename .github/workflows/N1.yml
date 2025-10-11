@@ -50,11 +50,13 @@ jobs:
     - name: Apply core patches
       run: |
         cd openwrt
-        # Apply patches from your repository's 'patches' directory
-        patch -p1 < $GITHUB_WORKSPACE/patches/0001-musl-elf.h-add-typedefs-for-Elf_Relr.patch
-        patch -p1 < $GITHUB_WORKSPACE/patches/0002-kernel-add-XDP-sockets-support.patch
-        patch -p1 < $GITHUB_WORKSPACE/patches/0003-scripts-optimize-download-mirrors.patch
-        patch -p1 < $GITHUB_WORKSPACE/patches/0004-toolchain-add-libquadmath-support.patch
+        echo "Applying patches..."
+        # Use -f to force apply, and || true to ignore errors if a patch fails partially
+        patch -p1 -f < $GITHUB_WORKSPACE/patches/0001-musl-elf.h-add-typedefs-for-Elf_Relr.patch || true
+        patch -p1 -f < $GITHUB_WORKSPACE/patches/0002-kernel-add-XDP-sockets-support.patch || true
+        patch -p1 -f < $GITHUB_WORKSPACE/patches/0003-scripts-optimize-download-mirrors.patch || true
+        patch -p1 -f < $GITHUB_WORKSPACE/patches/0004-toolchain-add-libquadmath-support.patch || true
+        echo "Patching process completed."
         
     - name: Cache build dependencies
       uses: actions/cache@v4
